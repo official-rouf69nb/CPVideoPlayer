@@ -1,7 +1,7 @@
 name: cp_video_player
 description: A customized flutter video player
-version: 0.0.1
-homepage:
+homepage: https://github.com/official-rouf69nb/CPVideoPlayer
+version: 0.0.6
 
 environment:
   sdk: ">=2.12.0 <3.0.0"
@@ -11,7 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  video_player: ^2.2.15
+  video_player: ^2.3.0
 
 dev_dependencies:
   flutter_test:

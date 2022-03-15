@@ -12,23 +12,33 @@ import 'custom_track_shape.dart';
 import 'orientation_detector_widget.dart';
 
 class CPVideoPlayerController{
-  void Function(String url, Duration? playPosition)? _onPlay;
+  void Function(String url, Duration? playPosition, bool? autoPlay)? _onPlay;
   void Function()? _onTogglePausePlay;
+  void Function()? _onPause;
+  void Function()? _onResume;
   void Function(double playedPosition, double totalDuration)? onProgressChange;
   double Function(double seekPosition, double totalDuration)? interceptSeekTo;
 
 
-  void play(String url, [Duration? playPosition]){
-    _onPlay?.call(url,playPosition);
+  void play(String url, {bool autoPlay = false, Duration? playPosition,}){
+    _onPlay?.call(url,playPosition,autoPlay);
   }
   void togglePausePlay(){
     _onTogglePausePlay?.call();
+  }
+  void pause(){
+    _onPause?.call();
+  }
+  void resume(){
+    _onResume?.call();
   }
   void dispose() {
     _onPlay = null;
     _onTogglePausePlay = null;
     onProgressChange = null;
     interceptSeekTo = null;
+    _onPause = null;
+    _onResume = null;
   }
 }
 class CPVideoPlayer extends StatefulWidget {
@@ -56,6 +66,8 @@ class _CPVideoPlayerState extends State<CPVideoPlayer> {
   void initState() {
     super.initState();
     widget.controller._onPlay = _onPlayNewVideo;
+    widget.controller._onPause = _pause;
+    widget.controller._onResume = _resume;
     widget.controller._onTogglePausePlay = _togglePausePlay;
   }
   @override
@@ -68,9 +80,11 @@ class _CPVideoPlayerState extends State<CPVideoPlayer> {
     super.dispose();
   }
 
-  void _onPlayNewVideo(String? url, Duration? playPosition) async{
-    if(url == null) return;
-    await _controller?.dispose();
+  void _onPlayNewVideo(String url, Duration? playPosition, bool? autoPlay) async{
+    try {
+      await _controller?.dispose();
+    }catch(_){}
+    _controller = null;
     _loadingError = false;
     _playedPosition=0;
     _videoDuration=0;
@@ -78,18 +92,21 @@ class _CPVideoPlayerState extends State<CPVideoPlayer> {
     _sliderInProgress = false;
     _controlVisible = true;
     _loadingError = false;
+    if(mounted)setState(() {debugPrint("New file played");});
+    if(url.isEmpty) return;
 
     _controller =  VideoPlayerController.network(url);
     _controller?.addListener(_playerStateListener);
-    _controller?.initialize()
-        .then((value){
+    _controller?.initialize().then((value){
+      if((autoPlay??false) && (_controller?.value.isInitialized??false) && !_controller!.value.isPlaying){
+        _togglePausePlay();
+      }
       if(playPosition != null && (_controller?.value.isInitialized??false)){
         if(_controller!.value.duration > playPosition){
           _seekToPosition(playPosition.inMilliseconds.toDouble());
         }
       }
-    })
-        .catchError((value){
+    }).catchError((value){
       _loadingError = true;
       _controlVisible = true;
     }).whenComplete((){if(mounted)setState(() {});});
@@ -149,11 +166,27 @@ class _CPVideoPlayerState extends State<CPVideoPlayer> {
   void _togglePausePlay() {
     if(_controller != null && _controller!.value.isInitialized){
       if(_controller!.value.isPlaying){
+        _pause();
+      }else{
+        _resume();
+      }
+    }
+  }
+
+  void _pause() {
+    if(_controller != null && _controller!.value.isInitialized){
+      if(_controller!.value.isPlaying){
         _controller!.pause().whenComplete((){
           _controlVisible = true;
           _hideTimer?.cancel();
         });
-      }else{
+      }
+      _uiRefreshSink?.add("refresh");
+    }
+  }
+  void _resume() {
+    if(_controller != null && _controller!.value.isInitialized){
+      if(!_controller!.value.isPlaying){
         _controller!.play().whenComplete((){
           cancelAndRestartTimer();
         });
@@ -161,6 +194,7 @@ class _CPVideoPlayerState extends State<CPVideoPlayer> {
       _uiRefreshSink?.add("refresh");
     }
   }
+
   void _seekToPosition(double value) {
     _sliderInProgress = true;
     _sliderValue = value;
@@ -422,9 +456,17 @@ class _CPVideoPlayerState extends State<CPVideoPlayer> {
                 );
               }
           ),
-
           ///User defined overlay
-          if(widget.overlay != null)widget.overlay!
+          if(widget.overlay != null)StreamBuilder<String>(
+            stream: _uiRefreshController.stream,
+            builder: (context,snapshot){
+              return AnimatedOpacity(
+                duration: const Duration(milliseconds: 300),
+                opacity: _controlVisible || (_controller?.value.isBuffering ?? false) ? 1:0.0,
+                child: widget.overlay!,
+              );
+            },
+          ),
         ],
       ),
     );
